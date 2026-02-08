@@ -1,13 +1,9 @@
 name: supabase-backup
 
 on:
-  push:
-    branches: [main, dev]
-  pull_request:
-    branches: [main, dev]
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *" # Runs every day at midnight
+    - cron: "0 0 * * *" # 每天 UTC 00:00
 
 env:
   BACKUP_ENABLED: true
@@ -19,7 +15,7 @@ jobs:
       contents: write
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-      # BACKUP_ENABLED: ${{ vars.BACKUP_ENABLED }} # Repository variable (true or false)
+
     steps:
       - name: Check if backups are enabled
         run: |
@@ -29,33 +25,30 @@ jobs:
           fi
 
       - name: Checkout repository
-        if: env.BACKUP_ENABLED == 'true'
         uses: actions/checkout@v3
 
       - name: Setup Supabase CLI
-        if: env.BACKUP_ENABLED == 'true'
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
-      - name: Create timestamp folder
-        if: env.BACKUP_ENABLED == 'true'
-        run: mkdir -p prisma/backups
+      - name: Create dated backup folder
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          BACKUP_DIR=prisma/backups/$DATE
+          mkdir -p $BACKUP_DIR
+          echo "BACKUP_DIR=$BACKUP_DIR" >> $GITHUB_ENV
 
       - name: Backup roles
-        if: env.BACKUP_ENABLED == 'true'
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f prisma/backups/roles.sql --role-only
+        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f $BACKUP_DIR/roles.sql --role-only
 
       - name: Backup schema
-        if: env.BACKUP_ENABLED == 'true'
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f prisma/backups/schema.sql
+        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f $BACKUP_DIR/schema.sql
 
       - name: Backup data
-        if: env.BACKUP_ENABLED == 'true'
-        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f prisma/backups/data.sql --data-only --use-copy
+        run: supabase db dump --db-url "$SUPABASE_DB_URL" -f $BACKUP_DIR/data.sql --data-only --use-copy
 
       - name: Commit backups
-        if: env.BACKUP_ENABLED == 'true'
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: Supabase backup
+          commit_message: "Supabase backup (${{ env.BACKUP_DIR }})"
